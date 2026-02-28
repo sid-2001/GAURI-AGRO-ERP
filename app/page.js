@@ -217,70 +217,169 @@ export default function Home() {
       }
 
       alert(`Bill saved with order ID ${data.orderId}`);
+      
+      // Reset bill form after saving
       setPartyName('');
       setGstNumber('');
+      setBillItems([{ productId: String(inventory[0]?._id), qty: 1 }]);
+      
       await loadData();
+      
+      // Switch tab to orders automatically so the user can download the bill
+      setActiveTab('orders');
     } catch (saveError) {
       alert(saveError.message);
     }
   };
 
-  const handleDownloadPdf = () => {
-    if (!partyName.trim() || !billPreview.rows.length) {
-      alert('Please fill party name and bill items before PDF export.');
-      return;
-    }
+  // UPDATED: Now receives the specific 'order' object and its 'index'
+  const handleDownloadPdf = (order, index) => {
+    if (!order) return;
 
-    const lines = billPreview.rows
+    const invoiceNo = index + 1;
+    
+    // Reconstruct the rows using the order items and current inventory
+    const orderRows = (order.items || []).map((item) => {
+      const product = inventory.find((p) => String(p._id) === String(item.productId)) || { name: 'Unknown Product', price: 0 };
+      const quantity = Number(item.qty || 0);
+      const amount = quantity * product.price;
+      return { product, quantity, amount };
+    });
+
+    const subtotal = orderRows.reduce((sum, row) => sum + row.amount, 0);
+    const gstAmount = subtotal * 0.18;
+    const cgst = gstAmount / 2;
+    const sgst = gstAmount / 2;
+    const total = subtotal + gstAmount;
+
+    const rowsHtml = orderRows
       .map(
-        (row) =>
-          `<tr><td>${row.product.name}</td><td>${row.quantity}</td><td>${formatCurrency(row.product.price)}</td><td>${formatCurrency(
-            row.amount
-          )}</td></tr>`
+        (row, i) => `
+          <tr>
+            <td>${i + 1}</td>
+            <td>${row.product.name}</td>
+            <td>31010099</td>
+            <td>${row.quantity}</td>
+            <td>${formatCurrency(row.product.price)}</td>
+            <td>Bag</td>
+            <td>${formatCurrency(row.amount)}</td>
+          </tr>
+        `
       )
       .join('');
 
     const billHtml = `
-      <html>
-        <head>
-          <title>Gauri Agro Bill</title>
-          <style>
-            body { font-family: Arial; padding: 18px; }
-            .head { display:flex; gap:12px; align-items:center; background:#081008; color:#7dff5e; padding:10px; border-radius:8px; }
-            img { width:52px; height:52px; border-radius:50%; }
-            table { width:100%; border-collapse: collapse; margin-top:14px; }
-            th, td { border:1px solid #222; padding:8px; text-align:left; }
-            th { background:#111; color:#7dff5e; }
-          </style>
-        </head>
-        <body>
-          <div class="head">
-            <img src="https://static.wixstatic.com/media/75f4d5_13bdb4f8642d459d842bae2db20aefad~mv2.jpg/v1/fill/w_77,h_77,al_c,q_80,usm_0.66_1.00_0.01,enc_avif,quality_auto/WhatsApp%20Image%202025-06-08%20at%204_56_edited.jpg" />
-            <div>
-              <h2>GAURI AGRO</h2>
-              <p>KHUSHALPUR ROAD, MORADABAD 244001 ,UTTAR PRADESH,India</p>
-            </div>
-          </div>
-          <p><b>Bill Date:</b> ${billDate}</p>
-          <p><b>Party:</b> ${partyName}</p>
-          <p><b>GST:</b> ${gstNumber || 'N/A'}</p>
-          <table>
-            <thead><tr><th>Item</th><th>Qty</th><th>Rate</th><th>Amount</th></tr></thead>
-            <tbody>${lines}</tbody>
-          </table>
-          <h3>Subtotal: ${formatCurrency(billPreview.subtotal)}</h3>
-          <h3>GST (18%): ${formatCurrency(billPreview.gstAmount)}</h3>
-          <h2>Grand Total: ${formatCurrency(billPreview.total)}</h2>
-          <p>Use browser print and choose "Save as PDF".</p>
-          <script>window.print()</script>
-        </body>
-      </html>`;
+    <html>
+      <head>
+        <title>Tax Invoice - ${order.orderId || invoiceNo}</title>
+        <style>
+          body { font-family: Arial; font-size: 13px; padding: 20px; }
+          table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+          th, td { border: 1px solid #000; padding: 6px; text-align: center; }
+          .center { text-align: center; }
+          .right { text-align: right; }
+          .no-border td { border: none; text-align: left; }
+        </style>
+      </head>
+
+      <body>
+        <p>
+          <b>Invoice No:</b> ${invoiceNo}
+          <span style="float:right"><b>Date:</b> ${order.date}</span>
+        </p>
+
+        <h2 class="center">M/s GAURI AGROPRODUCE</h2>
+        <p class="center">
+          KHUSHALPUR ROAD, MORADABAD 244001<br/>
+          GSTIN/UIN: 09ABDFG0229R1Z1<br/>
+          State Name: Uttar Pradesh, Code: 09
+        </p>
+
+        <h3 class="center">TAX INVOICE</h3>
+
+        <table class="no-border">
+          <tr>
+            <td>
+              <b>Party:</b><br/>
+              ${order.partyName}<br/>
+              GST: ${order.gstNumber || 'N/A'}
+            </td>
+          </tr>
+        </table>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Sl No</th>
+              <th>Description of Goods</th>
+              <th>HSN/SAC</th>
+              <th>Qty</th>
+              <th>Rate</th>
+              <th>Per</th>
+              <th>Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rowsHtml}
+          </tbody>
+        </table>
+
+        <p class="right"><b>Amount Chargeable:</b> ${formatCurrency(subtotal)}</p>
+
+        <table>
+          <thead>
+            <tr>
+              <th>HSN/SAC</th>
+              <th>Taxable Value</th>
+              <th>CGST 9%</th>
+              <th>SGST 9%</th>
+              <th>Total Tax</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>31010099</td>
+              <td>${formatCurrency(subtotal)}</td>
+              <td>${formatCurrency(cgst)}</td>
+              <td>${formatCurrency(sgst)}</td>
+              <td>${formatCurrency(gstAmount)}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <p class="right"><b>Net Amount:</b> ${formatCurrency(total)}</p>
+
+        <h4>Bank Details</h4>
+        <p>
+          A/c Name: Gauri Agroproduce<br/>
+          A/c Number: 0279102100002084<br/>
+          IFSC Code: PUNB0027910
+        </p>
+
+        <p>
+          <b>Declaration:</b><br/>
+          We declare that this invoice shows the actual price of the goods described
+          and that all particulars are true and correct.
+        </p>
+
+        <p style="text-align:right">
+          For <b>Gauri Agroproduce</b><br/><br/>
+          Authorised Signatory
+        </p>
+
+        <p class="center">This is a Computer Generated Invoice</p>
+
+        <script>window.print()</script>
+      </body>
+    </html>
+    `;
 
     const printWindow = window.open('', '_blank');
     if (!printWindow) {
       alert('Popup blocked. Please allow popups for PDF export.');
       return;
     }
+
     printWindow.document.write(billHtml);
     printWindow.document.close();
   };
@@ -431,11 +530,9 @@ export default function Home() {
             </div>
 
             <div className="actions">
+              {/* UPDATED: Changed label since it no longer downloads automatically */}
               <button type="button" onClick={handleGenerateOrder}>
                 Save Bill
-              </button>
-              <button type="button" onClick={handleDownloadPdf}>
-                Download PDF
               </button>
             </div>
           </div>
@@ -578,27 +675,36 @@ export default function Home() {
           <table>
             <thead>
               <tr>
+                <th>Order NO</th>
                 <th>Order ID</th>
                 <th>Date</th>
                 <th>Party</th>
                 <th>GST</th>
                 <th>Total</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               {orders.length ? (
-                orders.map((order) => (
+                orders.map((order, index) => (
                   <tr key={String(order._id)}>
+                    <td> {index + 1}</td>
                     <td>{order.orderId}</td>
                     <td>{order.date}</td>
                     <td>{order.partyName}</td>
                     <td>{order.gstNumber || 'N/A'}</td>
                     <td>{formatCurrency(order.total)}</td>
+                    <td>
+                      {/* UPDATED: Passing the current order and index directly to the print function */}
+                      <button type="button" onClick={() => handleDownloadPdf(order, index)}>
+                        Download PDF
+                      </button>
+                    </td>
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td colSpan="5">No orders yet. Create and save a bill first.</td>
+                  <td colSpan="7">No orders yet. Create and save a bill first.</td>
                 </tr>
               )}
             </tbody>
