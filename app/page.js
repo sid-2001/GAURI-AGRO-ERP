@@ -208,7 +208,7 @@ export default function Home() {
             <img src="https://static.wixstatic.com/media/75f4d5_13bdb4f8642d459d842bae2db20aefad~mv2.jpg/v1/fill/w_77,h_77,al_c,q_80,usm_0.66_1.00_0.01,enc_avif,quality_auto/WhatsApp%20Image%202025-06-08%20at%204_56_edited.jpg" />
             <div>
               <h2>GAURI AGRO</h2>
-              <p>KHUSAL PUR ROAD, MORADABAD 244001, INDIA, UTTAR PRADESH</p>
+              <p>KHUSHALPUR ROAD, MORADABAD 244001 ,UTTAR PRADESH,India</p>
             </div>
           </div>
           <p><b>Bill Date:</b> ${billDate}</p>
