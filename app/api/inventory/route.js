@@ -28,17 +28,26 @@ export async function GET() {
 
 export async function POST(request) {
   try {
+
+   
     const body = await request.json();
+     console.log(body)
     const name = String(body?.name || '').trim();
     const price = Number(body?.price || 0);
     const stock = Number(body?.stock || 0);
+      const hsnCode = String(body?.hsnCode || '')
+    const location = String(body?.location || '');
+    const locationCode = String(body?.locationCode || '');
+
+
+     
 
     if (!name || price <= 0 || stock < 0) {
       return NextResponse.json({ error: 'Invalid product payload.' }, { status: 400 });
     }
 
     const db = await getDb();
-    const result = await db.collection('inventory').insertOne({ name, price, stock });
+    const result = await db.collection('inventory').insertOne({ name, price, stock ,hsnCode,location,locationCode});
     const created = await db.collection('inventory').findOne({ _id: new ObjectId(result.insertedId) });
     return NextResponse.json(created, { status: 201 });
   } catch (error) {
