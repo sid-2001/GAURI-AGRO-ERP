@@ -7,7 +7,7 @@ export async function POST(request) {
     const password = String(body?.password || '').trim();
 
     const adminUser = process.env.ADMIN_USERNAME || 'admin';
-    const adminPass = process.env.ADMIN_PASSWORD || 'admin123';
+    const adminPass = process.env.ADMIN_PASSWORD || 'admingauri';
 
     if (username !== adminUser || password !== adminPass) {
       return NextResponse.json({ error: 'Invalid admin credentials.' }, { status: 401 });

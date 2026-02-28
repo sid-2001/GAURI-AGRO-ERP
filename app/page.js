@@ -361,7 +361,7 @@ export default function Home() {
         />
         <div>
           <h1>GAURI AGRO ERP</h1>
-          <p>KHUSAL PUR ROAD, MORADABAD 244001, INDIA, UTTAR PRADESH</p>
+          <p>KHUSHALPUR ROAD, MORADABAD 244001, UTTAR PRADESH, INDIA</p>
         </div>
       </header>
 
