@@ -269,3 +269,23 @@ th {
   padding: 0.7rem;
   border-radius: 8px;
 }
+
+.login-card {
+  max-width: 460px;
+  margin: 3rem auto;
+}
+
+.login-card p {
+  color: #b8d6b2;
+}
+
+.top-actions {
+  margin-top: 0.8rem;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.top-actions button {
+  width: auto;
+  min-width: 150px;
+}

@@ -9,6 +9,8 @@ const navItems = [
   { id: 'orders', label: 'Orders History' }
 ];
 
+const AUTH_KEY = 'gauri_admin_auth';
+
 function formatCurrency(value) {
   return new Intl.NumberFormat('en-IN', {
     style: 'currency',
@@ -34,6 +36,12 @@ export default function Home() {
   const [billDate, setBillDate] = useState(todayDate());
   const [billItems, setBillItems] = useState([]);
   const [newProduct, setNewProduct] = useState({ name: '', price: '', stock: '' });
+
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [checkingAuth, setCheckingAuth] = useState(true);
+  const [loginForm, setLoginForm] = useState({ username: '', password: '' });
+  const [loginError, setLoginError] = useState('');
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
 
   const loadData = async () => {
     try {
@@ -61,8 +69,16 @@ export default function Home() {
   };
 
   useEffect(() => {
-    loadData();
+    const token = localStorage.getItem(AUTH_KEY);
+    setIsAuthenticated(token === 'admin-authenticated');
+    setCheckingAuth(false);
   }, []);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      loadData();
+    }
+  }, [isAuthenticated]);
 
   const billPreview = useMemo(() => {
     const rows = billItems
@@ -135,6 +151,40 @@ export default function Home() {
 
   const removeBillLine = (index) => {
     setBillItems((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleLogin = async (event) => {
+    event.preventDefault();
+    setLoginError('');
+    setIsLoggingIn(true);
+
+    try {
+      const response = await fetch('/api/admin/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(loginForm)
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Login failed.');
+      }
+
+      localStorage.setItem(AUTH_KEY, data.token);
+      setIsAuthenticated(true);
+      setLoginForm({ username: '', password: '' });
+    } catch (authError) {
+      setLoginError(authError.message || 'Unable to login.');
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem(AUTH_KEY);
+    setIsAuthenticated(false);
+    setOrders([]);
+    setInventory([]);
   };
 
   const handleGenerateOrder = async () => {
@@ -263,6 +313,44 @@ export default function Home() {
     }
   };
 
+  if (checkingAuth) {
+    return <main className="app-shell"><section className="card">Checking admin session...</section></main>;
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <main className="app-shell">
+        <section className="card login-card">
+          <h2>Admin Login</h2>
+          <p>Login is required to access billing, inventory, dashboard and orders.</p>
+          <form onSubmit={handleLogin}>
+            <label>
+              Username
+              <input
+                value={loginForm.username}
+                onChange={(e) => setLoginForm((prev) => ({ ...prev, username: e.target.value }))}
+                placeholder="admin"
+              />
+            </label>
+            <label>
+              Password
+              <input
+                type="password"
+                value={loginForm.password}
+                onChange={(e) => setLoginForm((prev) => ({ ...prev, password: e.target.value }))}
+                placeholder="••••••••"
+              />
+            </label>
+            {loginError ? <p className="error-text">{loginError}</p> : null}
+            <button type="submit" disabled={isLoggingIn}>
+              {isLoggingIn ? 'Logging in...' : 'Login as Admin'}
+            </button>
+          </form>
+        </section>
+      </main>
+    );
+  }
+
   return (
     <main className="app-shell">
       <header className="header">
@@ -276,6 +364,10 @@ export default function Home() {
           <p>KHUSAL PUR ROAD, MORADABAD 244001, INDIA, UTTAR PRADESH</p>
         </div>
       </header>
+
+      <div className="top-actions">
+        <button type="button" onClick={handleLogout}>Logout Admin</button>
+      </div>
 
       {error ? <p className="error-text">{error}</p> : null}
 
