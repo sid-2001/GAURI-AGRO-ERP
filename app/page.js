@@ -101,7 +101,7 @@ export default function Home() {
       .filter(Boolean);
 
     const subtotal = rows.reduce((sum, row) => sum + row.amount, 0);
-    const gstAmount = subtotal * 0.18;
+    const gstAmount = subtotal * 0.05;
     const total = subtotal + gstAmount;
 
     return { rows, subtotal, gstAmount, total };
@@ -247,7 +247,7 @@ export default function Home() {
     });
 
     const subtotal = orderRows.reduce((sum, row) => sum + row.amount, 0);
-    const gstAmount = subtotal * 0.18;
+    const gstAmount = subtotal * 0.05;
     const cgst = gstAmount / 2;
     const sgst = gstAmount / 2;
     const total = subtotal + gstAmount;
@@ -546,7 +546,7 @@ export default function Home() {
             ))}
             <hr />
             <p>Subtotal: {formatCurrency(billPreview.subtotal)}</p>
-            <p>GST (18%): {formatCurrency(billPreview.gstAmount)}</p>
+            <p>GST (5%): {formatCurrency(billPreview.gstAmount)}</p>
             <p className="total">Grand Total: {formatCurrency(billPreview.total)}</p>
           </div>
         </section>
