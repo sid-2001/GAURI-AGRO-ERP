@@ -260,3 +260,12 @@ th {
   color: #9de98b;
   font-size: 0.75rem;
 }
+
+.error-text {
+  margin-top: 1rem;
+  background: #2f0f0f;
+  border: 1px solid #8f3232;
+  color: #ffc9c9;
+  padding: 0.7rem;
+  border-radius: 8px;
+}

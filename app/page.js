@@ -2,17 +2,6 @@
 
 import { useEffect, useMemo, useState } from 'react';
 
-const STORAGE_KEYS = {
-  inventory: 'gauri_inventory',
-  orders: 'gauri_orders'
-};
-
-const initialProducts = [
-  { id: 1, name: 'Neem Fertilizer', price: 450, stock: 40 },
-  { id: 2, name: 'Organic Pesticide', price: 620, stock: 28 },
-  { id: 3, name: 'Soil Booster Mix', price: 390, stock: 65 }
-];
-
 const navItems = [
   { id: 'billing', label: 'Create Bill' },
   { id: 'inventory', label: 'Inventory' },
@@ -34,41 +23,51 @@ function todayDate() {
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState('billing');
-  const [inventory, setInventory] = useState(initialProducts);
+  const [inventory, setInventory] = useState([]);
   const [orders, setOrders] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState('');
   const [filterMonth, setFilterMonth] = useState('all');
 
   const [partyName, setPartyName] = useState('');
   const [gstNumber, setGstNumber] = useState('');
   const [billDate, setBillDate] = useState(todayDate());
-  const [billItems, setBillItems] = useState([{ productId: initialProducts[0].id, qty: 1 }]);
-
+  const [billItems, setBillItems] = useState([]);
   const [newProduct, setNewProduct] = useState({ name: '', price: '', stock: '' });
 
-  useEffect(() => {
-    const savedInventory = localStorage.getItem(STORAGE_KEYS.inventory);
-    const savedOrders = localStorage.getItem(STORAGE_KEYS.orders);
+  const loadData = async () => {
+    try {
+      setError('');
+      setIsLoading(true);
+      const [inventoryRes, ordersRes] = await Promise.all([fetch('/api/inventory'), fetch('/api/orders')]);
 
-    if (savedInventory) {
-      setInventory(JSON.parse(savedInventory));
+      if (!inventoryRes.ok || !ordersRes.ok) {
+        throw new Error('Failed to load data from database APIs.');
+      }
+
+      const inventoryData = await inventoryRes.json();
+      const ordersData = await ordersRes.json();
+
+      setInventory(inventoryData);
+      setOrders(ordersData);
+      if (!billItems.length && inventoryData.length) {
+        setBillItems([{ productId: String(inventoryData[0]._id), qty: 1 }]);
+      }
+    } catch (loadError) {
+      setError(loadError.message || 'Unable to load data.');
+    } finally {
+      setIsLoading(false);
     }
-    if (savedOrders) {
-      setOrders(JSON.parse(savedOrders));
-    }
+  };
+
+  useEffect(() => {
+    loadData();
   }, []);
-
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.inventory, JSON.stringify(inventory));
-  }, [inventory]);
-
-  useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.orders, JSON.stringify(orders));
-  }, [orders]);
 
   const billPreview = useMemo(() => {
     const rows = billItems
       .map((line) => {
-        const product = inventory.find((item) => item.id === Number(line.productId));
+        const product = inventory.find((item) => String(item._id) === String(line.productId));
         if (!product) {
           return null;
         }
@@ -93,7 +92,7 @@ export default function Home() {
   }, [billItems, inventory]);
 
   const monthOptions = useMemo(() => {
-    const months = new Set(orders.map((order) => order.date.slice(0, 7)));
+    const months = new Set(orders.map((order) => String(order.date || '').slice(0, 7)).filter(Boolean));
     return ['all', ...Array.from(months).sort()];
   }, [orders]);
 
@@ -101,14 +100,18 @@ export default function Home() {
     if (filterMonth === 'all') {
       return orders;
     }
-    return orders.filter((order) => order.date.startsWith(filterMonth));
+    return orders.filter((order) => String(order.date || '').startsWith(filterMonth));
   }, [orders, filterMonth]);
 
   const graphData = useMemo(() => {
     const grouped = filteredOrders.reduce((acc, order) => {
-      acc[order.date] = acc[order.date] || { date: order.date, sales: 0, orders: 0 };
-      acc[order.date].sales += order.total;
-      acc[order.date].orders += 1;
+      const date = order.date;
+      if (!date) {
+        return acc;
+      }
+      acc[date] = acc[date] || { date, sales: 0, orders: 0 };
+      acc[date].sales += Number(order.total || 0);
+      acc[date].orders += 1;
       return acc;
     }, {});
 
@@ -123,18 +126,18 @@ export default function Home() {
   };
 
   const addBillLine = () => {
-    const productId = inventory[0]?.id;
+    const productId = inventory[0]?._id;
     if (!productId) {
       return;
     }
-    setBillItems((prev) => [...prev, { productId, qty: 1 }]);
+    setBillItems((prev) => [...prev, { productId: String(productId), qty: 1 }]);
   };
 
   const removeBillLine = (index) => {
     setBillItems((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const handleGenerateOrder = () => {
+  const handleGenerateOrder = async () => {
     if (!partyName.trim()) {
       alert('Please enter person/company name before saving bill.');
       return;
@@ -145,40 +148,31 @@ export default function Home() {
       return;
     }
 
-    const hasInsufficientStock = billPreview.rows.some((row) => row.quantity > row.product.stock);
-    if (hasInsufficientStock) {
-      alert('One or more line items have quantity greater than available stock.');
-      return;
+    try {
+      const payload = {
+        date: billDate,
+        partyName: partyName.trim(),
+        gstNumber: gstNumber.trim(),
+        items: billPreview.rows.map((row) => ({ productId: String(row.product._id), qty: row.quantity }))
+      };
+
+      const response = await fetch('/api/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to save bill.');
+      }
+
+      alert(`Bill saved with order ID ${data.orderId}`);
+      setPartyName('');
+      setGstNumber('');
+      await loadData();
+    } catch (saveError) {
+      alert(saveError.message);
     }
-
-    const orderId = `ORD-${Date.now()}`;
-    const newOrder = {
-      id: orderId,
-      date: billDate,
-      partyName: partyName.trim(),
-      gstNumber: gstNumber.trim(),
-      items: billPreview.rows.map((row) => ({
-        name: row.product.name,
-        qty: row.quantity,
-        price: row.product.price,
-        amount: row.amount
-      })),
-      subtotal: billPreview.subtotal,
-      gstAmount: billPreview.gstAmount,
-      total: billPreview.total
-    };
-
-    setOrders((prev) => [newOrder, ...prev]);
-    setInventory((prev) =>
-      prev.map((product) => {
-        const sold = billPreview.rows
-          .filter((row) => row.product.id === product.id)
-          .reduce((sum, row) => sum + row.quantity, 0);
-        return sold ? { ...product, stock: product.stock - sold } : product;
-      })
-    );
-
-    alert(`Bill saved with order ID ${orderId}`);
   };
 
   const handleDownloadPdf = () => {
@@ -241,21 +235,32 @@ export default function Home() {
     printWindow.document.close();
   };
 
-  const handleNewProduct = () => {
+  const handleNewProduct = async () => {
     if (!newProduct.name || !newProduct.price || !newProduct.stock) {
       alert('Please fill product name, price, and stock.');
       return;
     }
 
-    const product = {
-      id: Date.now(),
-      name: newProduct.name,
-      price: Number(newProduct.price),
-      stock: Number(newProduct.stock)
-    };
+    try {
+      const response = await fetch('/api/inventory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newProduct.name,
+          price: Number(newProduct.price),
+          stock: Number(newProduct.stock)
+        })
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Unable to create product.');
+      }
 
-    setInventory((prev) => [...prev, product]);
-    setNewProduct({ name: '', price: '', stock: '' });
+      setNewProduct({ name: '', price: '', stock: '' });
+      await loadData();
+    } catch (createError) {
+      alert(createError.message);
+    }
   };
 
   return (
@@ -272,6 +277,8 @@ export default function Home() {
         </div>
       </header>
 
+      {error ? <p className="error-text">{error}</p> : null}
+
       <nav className="tabs">
         {navItems.map((item) => (
           <button
@@ -285,7 +292,9 @@ export default function Home() {
         ))}
       </nav>
 
-      {activeTab === 'billing' && (
+      {isLoading ? <section className="card">Loading data from MongoDB...</section> : null}
+
+      {!isLoading && activeTab === 'billing' && (
         <section className="card grid">
           <div>
             <h2>Create Bill</h2>
@@ -306,12 +315,9 @@ export default function Home() {
               <h3>Bill Items</h3>
               {billItems.map((line, index) => (
                 <div className="line-item" key={`${index}-${line.productId}`}>
-                  <select
-                    value={line.productId}
-                    onChange={(e) => handleBillLineChange(index, 'productId', Number(e.target.value))}
-                  >
+                  <select value={line.productId} onChange={(e) => handleBillLineChange(index, 'productId', e.target.value)}>
                     {inventory.map((product) => (
-                      <option key={product.id} value={product.id}>
+                      <option key={String(product._id)} value={String(product._id)}>
                         {product.name} (Stock: {product.stock})
                       </option>
                     ))}
@@ -345,7 +351,7 @@ export default function Home() {
           <div className="preview">
             <h3>Bill Summary</h3>
             {billPreview.rows.map((row, idx) => (
-              <p key={`${row.product.id}-${idx}`}>
+              <p key={`${row.product._id}-${idx}`}>
                 {row.product.name} × {row.quantity} = <strong>{formatCurrency(row.amount)}</strong>
               </p>
             ))}
@@ -357,7 +363,7 @@ export default function Home() {
         </section>
       )}
 
-      {activeTab === 'inventory' && (
+      {!isLoading && activeTab === 'inventory' && (
         <section className="card">
           <h2>Inventory Management</h2>
           <div className="inventory-form">
@@ -393,7 +399,7 @@ export default function Home() {
             </thead>
             <tbody>
               {inventory.map((product) => (
-                <tr key={product.id}>
+                <tr key={String(product._id)}>
                   <td>{product.name}</td>
                   <td>{formatCurrency(product.price)}</td>
                   <td>{product.stock}</td>
@@ -404,7 +410,7 @@ export default function Home() {
         </section>
       )}
 
-      {activeTab === 'dashboard' && (
+      {!isLoading && activeTab === 'dashboard' && (
         <section className="card">
           <div className="dashboard-head">
             <h2>Sales Dashboard</h2>
@@ -420,7 +426,7 @@ export default function Home() {
           <div className="stats-grid">
             <article>
               <h3>Total Sales</h3>
-              <p>{formatCurrency(filteredOrders.reduce((sum, order) => sum + order.total, 0))}</p>
+              <p>{formatCurrency(filteredOrders.reduce((sum, order) => sum + Number(order.total || 0), 0))}</p>
             </article>
             <article>
               <h3>Total Orders</h3>
@@ -431,7 +437,7 @@ export default function Home() {
               <p>
                 {formatCurrency(
                   filteredOrders.length
-                    ? filteredOrders.reduce((sum, order) => sum + order.total, 0) / filteredOrders.length
+                    ? filteredOrders.reduce((sum, order) => sum + Number(order.total || 0), 0) / filteredOrders.length
                     : 0
                 )}
               </p>
@@ -474,7 +480,7 @@ export default function Home() {
         </section>
       )}
 
-      {activeTab === 'orders' && (
+      {!isLoading && activeTab === 'orders' && (
         <section className="card">
           <h2>Orders History</h2>
           <table>
@@ -490,8 +496,8 @@ export default function Home() {
             <tbody>
               {orders.length ? (
                 orders.map((order) => (
-                  <tr key={order.id}>
-                    <td>{order.id}</td>
+                  <tr key={String(order._id)}>
+                    <td>{order.orderId}</td>
                     <td>{order.date}</td>
                     <td>{order.partyName}</td>
                     <td>{order.gstNumber || 'N/A'}</td>
