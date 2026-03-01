@@ -220,6 +220,7 @@ export default function Home() {
       alert('Please add at least one valid bill item.');
       return;
     }
+    console.log(billPreview)
 
     try {
       const payload = {
@@ -231,7 +232,8 @@ export default function Home() {
         items: billPreview.rows.map((row) => ({ 
             productId: String(row.product._id), 
             qty: row.quantity,
-            discount: row.discountPercent
+            discount: row.discountPercent,
+            ...row
         }))
       };
 
@@ -258,14 +260,17 @@ export default function Home() {
     }
   };
 
-  const handleDownloadPdf = (order, index) => {
+const handleDownloadPdf = (order, index) => {
     if (!order) return;
     const invoiceNo = index + 1;
     
     const orderRows = (order.items || []).map((item) => {
       const product = inventory.find((p) => String(p._id) === String(item.productId)) || { name: 'Unknown Product', price: 0, hsnCode: 'N/A', locationCode: 'N/A' };
       const quantity = Number(item.qty || 0);
-      const discountPercent = Number(item.discount);
+      
+      // FIX 1: Fallback to 0 to prevent NaN errors on older orders that lack a discount field
+      const discountPercent = Number(item.discount || 0); 
+      
       const priceAfterDiscount = product.price * (1 - discountPercent / 100);
       const amount = quantity * priceAfterDiscount;
       
@@ -300,11 +305,12 @@ export default function Home() {
       .join('');
 
     const billHtml = `
+    <!DOCTYPE html>
     <html>
       <head>
         <title>Tax Invoice - ${order.orderId || invoiceNo}</title>
         <style>
-          body { font-family: Arial; font-size: 13px; padding: 20px; }
+          body { font-family: Arial, sans-serif; font-size: 13px; padding: 20px; }
           table { width: 100%; border-collapse: collapse; margin-top: 10px; }
           th, td { border: 1px solid #000; padding: 6px; text-align: center; }
           .center { text-align: center; }
@@ -402,8 +408,6 @@ export default function Home() {
         </p>
 
         <p class="center">This is a Computer Generated Invoice</p>
-
-        <script>window.print()</script>
       </body>
     </html>
     `;
@@ -416,8 +420,13 @@ export default function Home() {
 
     printWindow.document.write(billHtml);
     printWindow.document.close();
-  };
+    printWindow.focus();
 
+    // FIX 2: Ensure the browser has rendered the HTML before triggering the print dialogue.
+    setTimeout(() => {
+      printWindow.print();
+    }, 250);
+  };
   const handleNewProduct = async () => {
     if (!newProduct.name || !newProduct.price || !newProduct.stock) {
       alert('Please fill product name, price, and stock.');
