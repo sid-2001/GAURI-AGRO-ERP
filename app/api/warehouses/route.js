@@ -7,13 +7,20 @@ export async function GET(request) {
     const role = request.headers.get('x-user-role');
     const userId = request.headers.get('x-user-id');
     const forUserId = request.nextUrl.searchParams.get('userId');
+    const all = request.nextUrl.searchParams.get('all') === '1';
 
     if (!userId || !role) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const ownerUserId = role === 'admin' ? forUserId || userId : userId;
-    const warehouses = await db.collection('warehouses').find({ ownerUserId }).sort({ createdAt: -1 }).toArray();
+    let query = { ownerUserId: userId };
+    if (role === 'admin' && all) {
+      query = {};
+    } else if (role === 'admin') {
+      query = { ownerUserId: forUserId || userId };
+    }
+
+    const warehouses = await db.collection('warehouses').find(query).sort({ createdAt: -1 }).toArray();
     return NextResponse.json(warehouses.map((w) => ({ ...w, _id: String(w._id) })));
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
